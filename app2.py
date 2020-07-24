@@ -15,6 +15,10 @@ from umap import UMAP
 import json
 
 def make_graphs(datafile, algorithm, k, overlay):
+    no_overlay = False
+    if overlay=='None':
+        no_overlay = True
+        overlay = 'Medicaid Expansion (2017)' #placeholder, not actually used
     df = pd.read_csv(datafile, index_col=0)
     df_tmp = df.drop(['abbrev', 'Medicaid Expansion (2017)', '2016 Election', 'Median Household Income (2018)'], axis=1)
     umap = UMAP(n_neighbors=5, random_state=1035411).fit_transform(df_tmp)
@@ -22,14 +26,14 @@ def make_graphs(datafile, algorithm, k, overlay):
     df['Y'] = umap[:,1]
     clusters = None
     if algorithm=='gmm':
-        clusters = GaussianMixture(k, random_state=1035411).fit_predict(df_tmp)
+        clusters = GaussianMixture(k, random_state=1035411).fit_predict(df_tmp) + 1
     elif algorithm=='hc':
-        clusters = AgglomerativeClustering(k).fit_predict(df_tmp)
+        clusters = AgglomerativeClustering(k).fit_predict(df_tmp) + 1
     else:
-        clusters = KMeans(k, random_state=1035411).fit_predict(df_tmp)
-    df['cluster'] = clusters + 1
+        clusters = KMeans(k, random_state=1035411).fit_predict(df_tmp) + 1
+    df['cluster'] = clusters
     df['cluster'] = df['cluster'].astype('category')
-    df['cluster'].cat.set_categories([x + 1 for x in range(k)])
+    df['cluster'].cat.set_categories([x + 1 for x in range(max(df['cluster']))])
     df_for_bar = df.drop(['X', 'Y', 'abbrev', 'Medicaid Expansion (2017)', '2016 Election', 'Median Household Income (2018)'], axis=1)
     df_for_bar = df_for_bar.groupby('cluster').mean()
     idx_col = df_for_bar.index.name
@@ -52,10 +56,11 @@ def make_graphs(datafile, algorithm, k, overlay):
         '2016 Election': ['Clinton', 'Trump'],
         'Median Household Income (2018)': ['foo']
     }
-    hover_dict = {k:':.2f' for k in df.columns.drop(['X', 'Y', 'abbrev', 'Medicaid Expansion (2017)', '2016 Election', 'Median Household Income (2018)'])}
+    hover_dict = {k:':.2f' for k in df.columns.drop(['cluster', 'X', 'Y', 'abbrev', 'Medicaid Expansion (2017)', '2016 Election', 'Median Household Income (2018)'])}
     hover_dict['X'] = False
     hover_dict['Y'] = False
-    hover_dict[overlay] = True
+    if no_overlay:
+        hover_dict[overlay] = False
     region_dict = {
         'AL': 'South', 'AK': 'Other', 'AZ': 'West', 'AR': 'South', 'CA': 'West',
         'CO': 'West', 'CT': 'Northeast', 'DE': 'South', 'FL': 'South', 'GA': 'South',
@@ -93,6 +98,8 @@ def make_graphs(datafile, algorithm, k, overlay):
     fig1.update_traces(marker=dict(size=25, line=dict(width=2)))
     for t in fig1.data:
         t.marker.line.color = [region_color_dict[region_dict[abbrev]] for abbrev in t.text]
+    if no_overlay:
+        fig1.update_traces(marker=dict(color='rgb(128,128,255)'))
     fig1.update_xaxes(title_text='UMAP-1', showticklabels=False, ticks='', showline=False)
     fig1.update_yaxes(title_text='UMAP-2', showticklabels=False, ticks='', showline=False)
     fig1.update_layout(plot_bgcolor='rgb(240,240,250)')
@@ -187,6 +194,7 @@ app.layout = html.Div(children=[
                 {'label': 'Medicaid Expansion (2017)', 'value':'Medicaid Expansion (2017)'},
                 {'label': '2016 Election', 'value':'2016 Election'},
                 {'label': 'Median Household Income (2018)', 'value':'Median Household Income (2018)'},
+                {'label': 'None', 'value':'None'}
             ],
             value='Medicaid Expansion (2017)'
         ),
@@ -249,10 +257,10 @@ def make_state_bar(data_source, hoverData):
     df = d[d['abbrev']==state_name]
     dff = df.drop(['Medicaid Expansion (2017)', '2016 Election', 'Median Household Income (2018)'], axis=1)
     m = pd.melt(dff, id_vars='abbrev', var_name='Category', value_name='Percentage of Population')
-    fig = px.bar(m, x='abbrev', y='Percentage of Population', color='Category', color_discrete_sequence=px.colors.qualitative.Safe, template='simple_white')
+    fig = px.bar(m, x='abbrev', y='Percentage of Population', color='Category', color_discrete_sequence=px.colors.qualitative.Safe, template='simple_white', )
     fig.update_xaxes(title_text=state_name, showticklabels=False, ticks='', showline=False)
     fig.update_yaxes(showticklabels=False, ticks='', showline=False)
-    fig.update_layout(plot_bgcolor='rgb(240,240,250)')
+    fig.update_layout(plot_bgcolor='rgb(240,240,250)', showlegend=False)
     return fig
 
 if __name__ == '__main__':
